@@ -1,0 +1,112 @@
+import torch
+
+import torch
+
+import utils
+
+
+class SoundSimulator:
+    def __init__(
+        self,
+        A=10.0,
+        f=20000.0,
+        n_samples=44100,
+        T=1.0,
+        c=340.0,
+        sigma=0.005,
+        sender_pos=None,
+        receiver_pos=None
+    ):
+        self.A = A
+        self.f = f
+        self.n_samples = n_samples
+        self.T = T
+        self.dt = T / n_samples
+        self.c = c
+        self.sigma = sigma
+
+        self.sender_pos = sender_pos if sender_pos is not None else torch.tensor([0., 0.])
+        self.receiver_pos = receiver_pos if receiver_pos is not None else torch.tensor([
+            [-20., 0],
+            [-10., 0],
+            [10., 0],
+            [20., 0]
+        ])
+
+
+    def simulate_echoes(self, object_pos):
+        sender_dists = torch.norm(object_pos - self.sender_pos, dim=1)
+        receiver_dists = torch.cdist(object_pos, self.receiver_pos)
+        total_dists = sender_dists[:, None] + receiver_dists
+        arrival_time = total_dists / self.c
+
+        t = torch.arange(self.n_samples, device=self.sender_pos.device).float() * self.dt
+        t = t.view(1, 1, -1)
+        t_obj = arrival_time.unsqueeze(2)
+
+        envelope = torch.exp(-0.5 * ((t - t_obj) / self.sigma) ** 2)
+        carrier = torch.sin(2 * torch.pi * self.f * (t - t_obj))
+        pulse = envelope * carrier
+
+        attenuation = 1.0 / (total_dists + 1e-6)
+        pulse = pulse * attenuation.unsqueeze(2)
+
+        result = self.A * pulse.sum(dim=0)  # sum over objects → [N, T]
+        return result
+
+    def predict_position(self, signals, true_obj=None, plot=False):
+        initial_guess = torch.rand(1, 2)
+        initial_guess[:, 0] -= 0.5
+        initial_guess = initial_guess * 100
+        initial_guess = torch.tensor([[-10.,50.]])
+
+        reflection_points = torch.nn.Parameter(initial_guess.clone())
+        signals_normailized = (signals - signals.mean()) / signals.std()
+
+        # optimizer = torch.optim.SGD([reflection_points], l    r=0.001, momentum=0.9)
+        optimizer = torch.optim.Adam([reflection_points], lr=0.1)
+        steps = 5000
+        for step in range(steps):
+            optimizer.zero_grad()
+
+            pred_signals = self.simulate_echoes(reflection_points)
+            pred_signals_normalized = (pred_signals - pred_signals.mean()) / pred_signals.std()
+
+            # loss = xcorr_loss(pred_signals, signals)
+            # loss = calc_loss_for_signals(pred_signals_normalized, signals_normailized,dt)
+            loss = 100 * self.time_to_peak_loss(pred_signals, signals, self.dt)
+            # loss = torch.mean((signals_normailized - pred_signals_normalized) ** 2)
+            # loss = torch.sum((signals - pred_signals) ** 2)
+            # loss = self.cross_entropy_loss(pred_signals, signals)
+            # loss = self.correlation_loss(pred_signals_normalized, signals_normailized)
+            # loss = 10000 * self.mse_peak_loss(pred_signals, signals)
+
+            loss.backward()
+            optimizer.step()
+
+            # After optimizer.step()
+            with torch.no_grad():
+                reflection_points[:, 0].clamp_(-50, 50)  # Clamp x
+                reflection_points[:, 1].clamp_(0, 100)  # Clamp y
+
+            print("Step:", step, " Loss:", loss.item(), "Gradients:", reflection_points.grad, "Predicted pos:",
+                  reflection_points)
+
+            if(step % 500 == 0 or step == steps - 1) and plot:
+                utils.plot_predictions_scene(self.sender_pos, self.receiver_pos, reflection_points, step, loss, true_objs=true_obj)
+
+            #if loss < 0.0001:
+            #    break
+
+        return reflection_points.detach()
+
+    def time_to_peak_loss(self, pred, target, dt):
+        pred_peak = self.soft_argmax(pred)
+        target_peak = self.soft_argmax(target)
+        diff = (pred_peak - target_peak) * dt
+        return ((diff)).pow(2).mean()
+
+    def soft_argmax(self, x, beta=100.0):
+        x = torch.nn.functional.softmax(x * beta, dim=1)
+        indices = torch.arange(x.shape[1], device=x.device).float()
+        return (x * indices).sum(dim=1)
