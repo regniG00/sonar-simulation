@@ -52,12 +52,12 @@ class SoundSimulator:
         return result
 
     def predict_position(self, signals, true_obj=None, plot=False):
-        initial_guess = torch.rand(1, 2)
-        initial_guess[:, 0] -= 0.5
+        initial_guess = torch.rand(4, 2)
+        initial_guess[:, 0] *= 0.5
         initial_guess = initial_guess * 100
-        initial_guess = torch.tensor([[38.,70.]])
-        initial_guess = torch.tensor([[20., 60.], [25., 60.], [30., 60.], [35., 60.], [40., 60.], [45., 60.], [50., 60.]])
-        initial_guess[:,1] -=5
+        #initial_guess = torch.tensor([[20., 70.],[10., 45.]])
+        #initial_guess = torch.tensor([[20., 60.], [25., 60.], [30., 60.], [35., 60.], [40., 60.], [45., 60.], [50., 60.]])
+        #initial_guess[:,1] -= 2
 
         reflection_points = torch.nn.Parameter(initial_guess.clone())
         signals_normailized = (signals - signals.mean()) / signals.std()
@@ -66,18 +66,23 @@ class SoundSimulator:
 
         #optimizer = torch.optim.SGD([reflection_points], lr=0.1, momentum=0.9)
         optimizer = torch.optim.Adam([reflection_points], lr=0.1)
+        kernel = gaussian_filter1d(kernel_size=21, sigma=5.0)
+        filtered_signals = apply_1d_filter(signals.abs(), kernel)
         steps = 20000
         for step in range(steps):
             optimizer.zero_grad()
 
             pred_signals = self.simulate_echoes(reflection_points)
+            filtered_pred = apply_1d_filter(pred_signals.abs(), kernel)
             #pred_signals_normalized = (pred_signals - pred_signals.mean()) / pred_signals.std()
 
             #loss = 100 * self.time_to_peak_loss(pred_signals, signals, self.dt)
             #loss = 100* (torch.mean((signals - pred_signals)**2))
-            loss = 10*torch.mean((signals.abs() - pred_signals.abs()) ** 2)
+            #loss = 1*torch.mean((signals.abs() - pred_signals.abs()) ** 2)
+            #loss *= 10*cosine_similarity_loss(signals, pred_signals)
 
-            loss *= 10*cosine_similarity_loss(signals, pred_signals)
+            loss = 1 * torch.mean((filtered_signals-filtered_pred) ** 2)
+            loss += 10 * cosine_similarity_loss(filtered_signals, filtered_pred)
 
 
             loss.backward()
@@ -93,10 +98,13 @@ class SoundSimulator:
             if(step % 500 == 0 or step == steps - 1) and plot:
                 utils.plot_predictions_scene(self.sender_pos, self.receiver_pos, reflection_points, step, loss, true_objs=true_obj)
                 #utils.plot_signals(pred_signals.detach())
+                #utils.plot_signals(filtered_pred.detach())
 
 
 
             if loss.abs() < 0.0001:
+                utils.plot_predictions_scene(self.sender_pos, self.receiver_pos, reflection_points, step, loss,
+                                             true_objs=true_obj)
                 break
 
         return reflection_points.detach()
@@ -123,3 +131,16 @@ def cosine_similarity_loss(a, b):
     cos_sim = torch.nn.functional.cosine_similarity(a, b, dim=1)
 
     return 1 - cos_sim.mean()
+
+def gaussian_filter1d(kernel_size=51, sigma=5.0):
+    x = torch.arange(kernel_size) - kernel_size // 2
+    kernel = torch.exp(-0.5 * (x / sigma)**2)
+    kernel = kernel / kernel.sum()
+    return kernel.view(1, 1, -1)
+
+def apply_1d_filter(signals, kernel):
+    signals = signals.unsqueeze(1)
+    filtered = torch.nn.functional.conv1d(signals, kernel, padding=kernel.shape[-1] // 2)
+    return filtered.squeeze(1)
+
+

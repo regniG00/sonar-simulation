@@ -3,13 +3,17 @@ import utils
 from sound_simulator import SoundSimulator
 
 
-
 if __name__ == "__main__":
     sender_pos = torch.tensor([0., 0.])
     receiver_pos = torch.tensor([[-20., 0], [-10., 0.], [10., 0.], [20., 0]])
     obj_pos = torch.tensor([[20.,60.],[25.,60.],[30.,60.],[35.,60.],[40.,60.],[45.,60.],[50.,60.]])
-    #obj_pos = torch.tensor([[40., 70.]])
-    A = 50.
+    #obj_pos = torch.tensor([[45., 80.],[30., 95.]])
+
+    initial_guess = torch.rand(4, 2)
+    initial_guess[:, 0] *= 0.5
+    initial_guess = initial_guess * 100
+    obj_pos = initial_guess
+    A = 100.
     T = 1.
     n_samples = 44100
     dt = T / n_samples

@@ -11,7 +11,7 @@ def plot_signals(signals, figsize=(10, 6)):
     plt.legend([f"Receiver {i}" for i in range(signals.shape[0])])
     plt.grid(True)
     plt.tight_layout()
-    plt.ylim(-0.5, 1)
+    plt.ylim(-2,2)
     plt.show()
 
 def plot_predictions_scene(sender_pos, receiver_pos, object_pos, step, loss, true_objs = None):
