@@ -1,7 +1,6 @@
 import torch
 import utils
 
-
 class SoundSimulator:
     def __init__(
         self,
@@ -16,8 +15,8 @@ class SoundSimulator:
     ):
         self.A = A
         self.f = f
-        self.n_samples = n_samples
         self.T = T
+        self.n_samples = 44100 * T
         self.dt = T / n_samples
         self.c = c
         self.sigma = sigma
@@ -48,66 +47,63 @@ class SoundSimulator:
         attenuation = 1.0 / (total_dists + 1e-6)
         pulse = pulse * attenuation.unsqueeze(2)
 
-        result = self.A * pulse.sum(dim=0)  # sum over objects → [N, T]
+        result = self.A * pulse.sum(dim=0)
+        noise = torch.randn_like(result)
+        result = result + noise * 0.05
         return result
 
     def predict_position(self, signals, true_obj=None, plot=False):
-        initial_guess = torch.rand(4, 2)
-        initial_guess[:, 0] *= 0.5
-        initial_guess = initial_guess * 100
-        #initial_guess = torch.tensor([[20., 70.],[10., 45.]])
-        #initial_guess = torch.tensor([[20., 60.], [25., 60.], [30., 60.], [35., 60.], [40., 60.], [45., 60.], [50., 60.]])
-        #initial_guess[:,1] -= 2
+        n_points = 3
+        n_inits = 1000
+        kernel = gaussian_filter1d(kernel_size=31, sigma=5.0)
+        filtered_signals = apply_1d_filter(signals.abs(), kernel)
+
+        initial_guess = self.initialize_guess(n_inits, n_points, filtered_signals, kernel)
+        #initial_guess = torch.tensor([[0.4, 0.5], [-0.2, 0.5]])
+        # = torch.tensor([[0.5,0.5],[0.55,0.5]])
 
         reflection_points = torch.nn.Parameter(initial_guess.clone())
-        signals_normailized = (signals - signals.mean()) / signals.std()
+        optimizer = torch.optim.Adam([reflection_points], lr=0.01)
 
 
-
-        #optimizer = torch.optim.SGD([reflection_points], lr=0.1, momentum=0.9)
-        optimizer = torch.optim.Adam([reflection_points], lr=0.1)
-        kernel = gaussian_filter1d(kernel_size=21, sigma=5.0)
-        filtered_signals = apply_1d_filter(signals.abs(), kernel)
-        steps = 20000
+        utils.plot_signals(filtered_signals, title="True filtered signals")
+        steps = 1000000
         for step in range(steps):
             optimizer.zero_grad()
-
             pred_signals = self.simulate_echoes(reflection_points)
             filtered_pred = apply_1d_filter(pred_signals.abs(), kernel)
-            #pred_signals_normalized = (pred_signals - pred_signals.mean()) / pred_signals.std()
 
-            #loss = 100 * self.time_to_peak_loss(pred_signals, signals, self.dt)
-            #loss = 100* (torch.mean((signals - pred_signals)**2))
-            #loss = 1*torch.mean((signals.abs() - pred_signals.abs()) ** 2)
-            #loss *= 10*cosine_similarity_loss(signals, pred_signals)
-
-            loss = 1 * torch.mean((filtered_signals-filtered_pred) ** 2)
-            loss += 10 * cosine_similarity_loss(filtered_signals, filtered_pred)
+            #loss = 100000 * self.time_to_peak_loss(filtered_pred, filtered_signals, self.dt)
+            loss = loss_function(filtered_pred, filtered_signals)
 
 
             loss.backward()
             optimizer.step()
 
             with torch.no_grad():
-                reflection_points[:, 0].clamp_(-50, 50)
-                reflection_points[:, 1].clamp_(0, 100)
+                reflection_points[:, 0].clamp_(-1, 1)
+                reflection_points[:, 1].clamp_(0.1, 1)
 
             print("Step:", step, " Loss:", loss.item(), "Gradients:", reflection_points.grad, "Predicted pos:",
                   reflection_points)
 
             if(step % 500 == 0 or step == steps - 1) and plot:
                 utils.plot_predictions_scene(self.sender_pos, self.receiver_pos, reflection_points, step, loss, true_objs=true_obj)
-                #utils.plot_signals(pred_signals.detach())
-                #utils.plot_signals(filtered_pred.detach())
+
+                if (step % 10000 == 0 or step == steps - 1) and plot:
+                    utils.plot_signals(pred_signals.detach())
+                    utils.plot_signals(filtered_pred.detach())
 
 
 
-            if loss.abs() < 0.0001:
+
+
+            if loss.abs() < 0.01:
                 utils.plot_predictions_scene(self.sender_pos, self.receiver_pos, reflection_points, step, loss,
                                              true_objs=true_obj)
                 break
 
-        return reflection_points.detach()
+        return reflection_points
 
     def time_to_peak_loss(self, pred, target, dt):
         pred_peak = self.soft_argmax(pred)
@@ -121,6 +117,30 @@ class SoundSimulator:
         indices = torch.arange(x.shape[1], device=x.device).float()
         return (x * indices).sum(dim=1)
 
+    def initialize_guess(self, steps, n_points, filtered_target, kernel):
+        best_guess = None
+        best_loss = None
+
+        for i in range(steps):
+            guess = torch.rand(n_points, 2)
+            guess[:, 0] -= 0.5
+            guess[:, 0] *= 2
+            guess[:, 1] *= 0.9
+            guess[:, 1] += 0.1
+            guess_signal = self.simulate_echoes(guess)
+            filtered_guess_signal = apply_1d_filter(guess_signal.abs(), kernel)
+            loss = loss_function(filtered_guess_signal, filtered_target)
+
+            print("Guess ", i, ":", guess, " Loss; ", loss)
+
+            if best_loss is None or loss < best_loss:
+                best_loss = loss
+                best_guess = guess
+        print("Best Guess: ", best_guess, " Best Loss: ", best_loss)
+
+        return best_guess
+
+
 def cosine_similarity_loss(a, b):
     a = a.view(a.size(0), -1)
     b = b.view(b.size(0), -1)
@@ -132,7 +152,7 @@ def cosine_similarity_loss(a, b):
 
     return 1 - cos_sim.mean()
 
-def gaussian_filter1d(kernel_size=51, sigma=5.0):
+def gaussian_filter1d(kernel_size=51, sigma=25.0):
     x = torch.arange(kernel_size) - kernel_size // 2
     kernel = torch.exp(-0.5 * (x / sigma)**2)
     kernel = kernel / kernel.sum()
@@ -144,3 +164,7 @@ def apply_1d_filter(signals, kernel):
     return filtered.squeeze(1)
 
 
+def loss_function(pred, target):
+    loss = 1 * torch.mean((target - pred) ** 2)
+    loss += 10 * cosine_similarity_loss(target, pred)
+    return loss
