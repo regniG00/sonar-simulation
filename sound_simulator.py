@@ -6,18 +6,18 @@ class SoundSimulator:
         self,
         A=10.0,
         f=20000.0,
-        n_samples=44100,
         T=1.0,
-        c=340.0,
+        c=343.0,
         sigma=0.005,
+        samplerate=44100,
         sender_pos=None,
         receiver_pos=None
     ):
         self.A = A
         self.f = f
         self.T = T
-        self.n_samples = 44100 * T
-        self.dt = T / n_samples
+        self.n_samples = samplerate * T
+        self.dt = 1 / samplerate
         self.c = c
         self.sigma = sigma
 
@@ -49,11 +49,11 @@ class SoundSimulator:
 
         result = self.A * pulse.sum(dim=0)
         noise = torch.randn_like(result)
-        result = result + noise * 0.05
+        result = result# + noise * 0.05
         return result
 
     def predict_position(self, signals, true_obj=None, plot=False):
-        n_points = 3
+        n_points = 2
         n_inits = 1000
         kernel = gaussian_filter1d(kernel_size=31, sigma=5.0)
         filtered_signals = apply_1d_filter(signals.abs(), kernel)
@@ -162,7 +162,6 @@ def apply_1d_filter(signals, kernel):
     signals = signals.unsqueeze(1)
     filtered = torch.nn.functional.conv1d(signals, kernel, padding=kernel.shape[-1] // 2)
     return filtered.squeeze(1)
-
 
 def loss_function(pred, target):
     loss = 1 * torch.mean((target - pred) ** 2)
