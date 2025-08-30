@@ -33,6 +33,27 @@ def gauss_temp(t_arrival, n_samples, dt, f=10, A=1):
 
     return pulse
 
+fig, ax = plt.subplots(figsize=(10, 10))
+speaker = torch.tensor([0.,0.])
+receiver1 = torch.tensor([10.,0.])
+receiver2 = torch.tensor([5.,0.])
+object = torch.tensor([5.,20.])
+ax.scatter(speaker[0],speaker[1], label='Sender', color='blue',marker="v", s=100)
+ax.scatter(receiver1[0],receiver1[1], label='Receiver 1', marker="s", color='purple', s=100)
+ax.scatter(receiver2[0],receiver2[1], label='Receiver 2', marker="s", color='red', s=100)
+ax.scatter(object[0],object[1], label='Object', color='orange', s=100)
+
+ax.plot([speaker[0], object[0]], [speaker[1], object[1]], color='gray', linestyle='--', label='Speaker → Object')
+ax.plot([object[0], receiver1[0]], [object[1], receiver1[1]], color='purple', linestyle='--', label='Object → Receiver 1')
+ax.plot([object[0], receiver2[0]], [object[1], receiver2[1]], color='red', linestyle='--', label='Object → Receiver 2')
+
+
+ax.grid(True)
+ax.legend()
+plt.show()
+
+exit()
+
 
 T = 10.
 n_samples = 2000
@@ -70,21 +91,7 @@ exit()
 
 
 
-fig, ax = plt.subplots(figsize=(10, 10))
-speaker = torch.tensor([0.,0.])
-receiver = torch.tensor([10.,0.])
-object = torch.tensor([5.,20.])
-ax.scatter(speaker[0],speaker[1], label='Sender', color='blue',marker="v", s=100)
-ax.scatter(receiver[0],receiver[1], label='Receivers', marker="s", color='green', s=100)
-ax.scatter(object[0],object[1], label='Object', color='orange', s=100)
 
-ax.plot([speaker[0], object[0]], [speaker[1], object[1]], color='gray', linestyle='--', label='Speaker → Object')
-ax.plot([object[0], receiver[0]], [object[1], receiver[1]], color='purple', linestyle='--', label='Object → Receiver')
-
-
-ax.grid(True)
-ax.legend()
-plt.show()
 
 
 

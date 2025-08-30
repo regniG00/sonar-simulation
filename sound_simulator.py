@@ -9,7 +9,7 @@ class SoundSimulator:
         T=1.0,
         c=343.0,
         sigma=0.005,
-        samplerate=44100,
+        samplerate=96000,
         sender_pos=None,
         receiver_pos=None
     ):
@@ -44,22 +44,25 @@ class SoundSimulator:
         carrier = torch.cos(2 * torch.pi * self.f * (t - t_obj))
         pulse = envelope * carrier
 
-        attenuation = 1.0 / (total_dists + 1e-6)
+        attenuation = 1.0 / (total_dists + 1e-6)**2
         pulse = pulse * attenuation.unsqueeze(2)
 
         result = self.A * pulse.sum(dim=0)
         noise = torch.randn_like(result)
-        result = result# + noise * 0.05
+        result = result + noise * 0.05
         return result
 
-    def predict_position(self, signals, true_obj=None, plot=False):
-        n_points = 2
-        n_inits = 1000
+    def predict_position(self, signals, n_points = 2, true_obj=None, plot=False):
+        n_inits = 1
         kernel = gaussian_filter1d(kernel_size=31, sigma=5.0)
         filtered_signals = apply_1d_filter(signals.abs(), kernel)
 
         initial_guess = self.initialize_guess(n_inits, n_points, filtered_signals, kernel)
+        #initial_guess = self.grid_search_initialization(n_points, filtered_signals, kernel)
+        #initial_guess = torch.tensor([[1., 1.], [-1., 1.]])
+
         #initial_guess = torch.tensor([[0.4, 0.5], [-0.2, 0.5]])
+        #initial_guess = torch.tensor([[0.3, 0.5]])
         # = torch.tensor([[0.5,0.5],[0.55,0.5]])
 
         reflection_points = torch.nn.Parameter(initial_guess.clone())
@@ -105,17 +108,7 @@ class SoundSimulator:
 
         return reflection_points
 
-    def time_to_peak_loss(self, pred, target, dt):
-        pred_peak = self.soft_argmax(pred)
-        target_peak = self.soft_argmax(target)
-        diff = (pred_peak - target_peak)
-        diff = diff  * dt
-        return ((diff)).pow(2).mean()
 
-    def soft_argmax(self, x, beta=100.0):
-        x = torch.nn.functional.softmax(x * beta, dim=1)
-        indices = torch.arange(x.shape[1], device=x.device).float()
-        return (x * indices).sum(dim=1)
 
     def initialize_guess(self, steps, n_points, filtered_target, kernel):
         best_guess = None
@@ -151,6 +144,18 @@ def cosine_similarity_loss(a, b):
     cos_sim = torch.nn.functional.cosine_similarity(a, b, dim=1)
 
     return 1 - cos_sim.mean()
+
+def time_to_peak_loss( pred, target, dt = 1):
+    pred_peak = soft_argmax(pred)
+    target_peak = soft_argmax(target)
+    diff = (pred_peak - target_peak)
+    diff = diff * dt
+    return ((diff)).pow(2).mean()
+
+def soft_argmax( x, beta=100.0):
+    x = torch.nn.functional.softmax(x * beta, dim=1)
+    indices = torch.arange(x.shape[1], device=x.device).float()
+    return (x * indices).sum(dim=1)
 
 def gaussian_filter1d(kernel_size=51, sigma=25.0):
     x = torch.arange(kernel_size) - kernel_size // 2
