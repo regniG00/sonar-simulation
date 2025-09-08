@@ -1,5 +1,8 @@
+from cProfile import label
+
 import torch
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import title
 
 import utils
 
@@ -33,24 +36,120 @@ def gauss_temp(t_arrival, n_samples, dt, f=10, A=1):
 
     return pulse
 
+
+def gauss(t_arrival, n_samples, dt):
+    t = torch.arange(n_samples).float() * dt
+
+    gauss = torch.exp(-0.5 * ((t - t_arrival) / 0.1) ** 2)
+    attenuation = 1.0 / (t_arrival + 1e-6)
+
+    pulse = gauss  *  attenuation
+    return pulse
+
 fig, ax = plt.subplots(figsize=(10, 10))
 speaker = torch.tensor([0.,0.])
-receiver1 = torch.tensor([10.,0.])
-receiver2 = torch.tensor([5.,0.])
-object = torch.tensor([5.,20.])
+receiver1 = torch.tensor([0.25,0.])
+receiver2 = torch.tensor([-0.25,0.])
+
+object1 = torch.tensor([0.2,0.1])
+object2 = torch.tensor([-0.3,0.5])
 ax.scatter(speaker[0],speaker[1], label='Sender', color='blue',marker="v", s=100)
 ax.scatter(receiver1[0],receiver1[1], label='Receiver 1', marker="s", color='purple', s=100)
 ax.scatter(receiver2[0],receiver2[1], label='Receiver 2', marker="s", color='red', s=100)
-ax.scatter(object[0],object[1], label='Object', color='orange', s=100)
+ax.scatter(object1[0],object1[1], label='Object 1', color='green', marker="o", s=100)
+ax.scatter(object2[0],object2[1], label='Object 2', color='purple', marker="o", s=100)
+ax.plot([speaker[0], object1[0]], [speaker[1], object1[1]], color='gray', linestyle='--')
+ax.plot([object1[0], receiver1[0]], [object1[1], receiver1[1]], color='purple', linestyle='--')
+ax.plot([object1[0], receiver2[0]], [object1[1], receiver2[1]], color='red', linestyle='--')
 
-ax.plot([speaker[0], object[0]], [speaker[1], object[1]], color='gray', linestyle='--', label='Speaker → Object')
-ax.plot([object[0], receiver1[0]], [object[1], receiver1[1]], color='purple', linestyle='--', label='Object → Receiver 1')
-ax.plot([object[0], receiver2[0]], [object[1], receiver2[1]], color='red', linestyle='--', label='Object → Receiver 2')
+ax.plot([speaker[0], object2[0]], [speaker[1], object2[1]], color='gray', linestyle='--')
+ax.plot([object2[0], receiver1[0]], [object2[1], receiver1[1]], color='purple', linestyle='--')
+ax.plot([object2[0], receiver2[0]], [object2[1], receiver2[1]], color='red', linestyle='--')
 
 
 ax.grid(True)
 ax.legend()
+plt.xlabel("X position in m")
+plt.ylabel("Y position in m")
 plt.show()
+
+
+T = 10.
+n_samples = 2000
+f=10
+dt = T / n_samples
+gauss1 = gauss(t_arrival=2, n_samples=n_samples, dt=dt)
+t = torch.arange(n_samples).float() * dt
+
+gauss2 = gauss(t_arrival=2.5, n_samples=n_samples, dt=dt)
+gauss3 = gauss(t_arrival=7, n_samples=n_samples, dt=dt)
+gauss4 = gauss(t_arrival=1, n_samples=n_samples, dt=dt)
+gauss5 = gauss(t_arrival=2.2, n_samples=n_samples, dt=dt)
+gauss6 = gauss(t_arrival=1.8, n_samples=n_samples, dt=dt)
+
+t = torch.arange(n_samples).float() * dt
+plt.figure(figsize=(10,10))
+plt.plot(t,gauss1, linewidth=3)
+plt.plot(t,gauss2)
+plt.plot(t,gauss3)
+plt.plot(t,gauss4)
+plt.plot(t,gauss5)
+plt.plot(t,gauss6)
+plt.grid(True)
+plt.xlabel("Time")
+plt.ylabel("Amplitude")
+#plt.title(f"Gabor function f={f}")
+plt.show()
+
+exit()
+
+plt.figure(figsize=(10,10))
+plt.plot(t,gauss1)
+plt.grid(True)
+plt.xlabel("Time")
+plt.ylabel("Amplitude")
+plt.title(f"Gabor function f={f}")
+plt.show()
+
+plt.plot(t,gauss1.abs())
+plt.grid(True)
+plt.xlabel("Time")
+plt.ylabel("Amplitude")
+plt.title(f"Absolute Gabor function f={f}")
+plt.show()
+
+
+sigma= 50.0
+kernel = gaussian_filter1d(kernel_size=1001, sigma=50.0)
+filtered_true_gauss = apply_filter(gauss1.abs(), kernel)
+plt.plot(t,filtered_true_gauss)
+plt.grid(True)
+plt.xlabel("Time")
+plt.ylabel("Amplitude")
+plt.title(f"Filtered Gabor function f={f}")
+plt.show()
+
+
+
+
+
+
+mse1_2 = torch.mean((gauss1-gauss2)**2)
+mse1_3 = torch.mean((gauss1-gauss3)**2)
+mse1_4 = torch.mean((gauss1-gauss4)**2)
+mse1_5 = torch.mean((gauss1-gauss5)**2)
+mse1_6 = torch.mean((gauss1-gauss6)**2)
+
+fig, ax = plt.subplots()
+
+label=["blue_red","blue_orange","blue_brown","blue_purple","blue_green"]
+losses = [mse1_4,mse1_2,mse1_6,mse1_5,mse1_3]
+
+ax.bar(label, losses)
+ax.set_title("MSE Loss for blue gaussian")
+
+plt.show()
+
 
 exit()
 
@@ -94,79 +193,6 @@ exit()
 
 
 
-
-T = 1.
-n_samples = 2000
-f=10
-dt = T / n_samples
-gauss1 = gauss_temp(t_arrival=0.5, n_samples=n_samples, dt=dt)
-t = torch.arange(n_samples).float() * dt
-
-plt.figure(figsize=(10,10))
-plt.plot(t,gauss1)
-plt.grid(True)
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
-plt.title(f"Gabor function f={f}")
-plt.show()
-
-plt.plot(t,gauss1.abs())
-plt.grid(True)
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
-plt.title(f"Absolute Gabor function f={f}")
-plt.show()
-
-
-sigma= 50.0
-kernel = gaussian_filter1d(kernel_size=1001, sigma=50.0)
-filtered_true_gauss = apply_filter(gauss1.abs(), kernel)
-plt.plot(t,filtered_true_gauss)
-plt.grid(True)
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
-plt.title(f"Filtered Gabor function f={f}")
-plt.show()
-
-exit()
-
-
-gauss2 = gauss_temp(t_arrival=2.5, n_samples=n_samples, dt=dt)
-gauss3 = gauss_temp(t_arrival=7, n_samples=n_samples, dt=dt)
-gauss4 = gauss_temp(t_arrival=1, n_samples=n_samples, dt=dt)
-gauss5 = gauss_temp(t_arrival=2.2, n_samples=n_samples, dt=dt)
-gauss6 = gauss_temp(t_arrival=1.8, n_samples=n_samples, dt=dt)
-
-t = torch.arange(n_samples).float() * dt
-plt.figure(figsize=(10,10))
-plt.plot(t,gauss1)
-plt.plot(t,gauss2)
-plt.plot(t,gauss3)
-plt.plot(t,gauss4)
-plt.plot(t,gauss5)
-plt.plot(t,gauss6)
-plt.grid(True)
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
-#plt.title(f"Gabor function f={f}")
-plt.show()
-
-
-mse1_2 = torch.mean((gauss1-gauss2)**2)
-mse1_3 = torch.mean((gauss1-gauss3)**2)
-mse1_4 = torch.mean((gauss1-gauss4)**2)
-mse1_5 = torch.mean((gauss1-gauss5)**2)
-mse1_6 = torch.mean((gauss1-gauss6)**2)
-
-fig, ax = plt.subplots()
-
-label=["blue_red","blue_orange","blue_brown","blue_purple","blue_green"]
-losses = [mse1_4,mse1_2,mse1_6,mse1_5,mse1_3]
-
-ax.bar(label, losses)
-ax.set_title("MSE Loss for blue gaussian")
-
-plt.show()
 
 
 
